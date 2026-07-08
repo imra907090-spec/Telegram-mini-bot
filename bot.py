@@ -12,7 +12,7 @@ from firebase_admin import credentials, db
 # --- কনফিগারেশন ---
 API_TOKEN = '8647369071:AAEg2UdyvQGZGcxykDGkbz5oqsoabOVYOIk'
 ADMIN_ID = 8273597769  # আপনার টেলিগ্রাম আইডি এখানে দিন
-MINI_APP_URL = "https://yourdomain.netlify.app" # আপনার হোস্ট করা মিনি অ্যাপের ফাইনাল লিংক
+MINI_APP_URL = "https://telegramminib.netlify.app/" # আপনার হোস্ট করা মিনি অ্যাপের ফাইনাল লিংক
 
 # ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া সরাসরি কানেকশন)
 if not firebase_admin._apps:
