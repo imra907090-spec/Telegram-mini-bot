@@ -25,7 +25,7 @@ import firebase_admin
 from firebase_admin import db
 
 # --- কনফিগারেশন ---
-API_TOKEN = '8647369071:AAEg2UdyvQGZGcxykDGkbz5oqsoabOVYOIk'
+API_TOKEN = '8931384031:AAElSwSOL_CQdShaUgvwEBenkdmJPkiXZUc'
 ADMIN_ID = 8273597769  
 MINI_APP_URL = "https://telegramminib.netlify.app/" 
 
