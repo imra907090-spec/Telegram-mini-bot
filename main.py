@@ -22,17 +22,16 @@ except ModuleNotFoundError:
     V3_MODE = False
 
 import firebase_admin
-from firebase_admin import credentials, db
+from firebase_admin import db
 
 # --- কনফিগারেশন ---
 API_TOKEN = '8647369071:AAEg2UdyvQGZGcxykDGkbz5oqsoabOVYOIk'
 ADMIN_ID = 8273597769  
 MINI_APP_URL = "https://telegramminib.netlify.app/" 
 
-# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া পাবলিক রুলস কানেকশন ফিক্স)
+# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া পাবলিক রুলসের সঠিক মেথড)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(
-        credential=firebase_admin.credentials.AnonymousCredentials(), # গুগলের ডিফল্ট ক্রেডেনশিয়াল এরর ফিক্স করার ম্যাজিক লাইন
         options={
             'databaseURL': 'https://telegram-mini-bot-5cb21-default-rtdb.asia-southeast1.firebasedatabase.app/'
         }
@@ -63,18 +62,35 @@ class AdminStates(StatesGroup):
 
 # --- ডেটাবেস ফাংশনস ---
 def get_user(uid):
-    ref = db.reference(f'users/{uid}')
-    data = ref.get()
-    if not data:
-        data = {'balance': 0.0, 'refer_count': 0, 'referred_by': None}
-        ref.set(data)
-    return data
+    try:
+        ref = db.reference(f'users/{uid}')
+        data = ref.get()
+        if not data:
+            data = {'balance': 0.0, 'refer_count': 0, 'referred_by': None}
+            ref.set(data)
+        return data
+    except Exception as e:
+        logging.error(f"Error in get_user: {e}")
+        return {'balance': 0.0, 'refer_count': 0, 'referred_by': None}
 
 def get_settings():
-    ref = db.reference('settings')
-    data = ref.get()
-    if not data:
-        data = {
+    try:
+        ref = db.reference('settings')
+        data = ref.get()
+        if not data:
+            data = {
+                'bkash': '017XXXXXXXX', 'nagad': '019XXXXXXXX', 
+                'rocket': '015XXXXXXXX', 'binance': 'TRC20_WALLET_HERE',
+                'bkash_logo': '', 'nagad_logo': '', 'rocket_logo': '', 'binance_logo': '',
+                'ref_bonus': 1.50, 'min_wd': 50.0,
+                'admin_tg': 'https://t.me/your_admin_username',
+                'admin_wa': 'https://wa.me/88017XXXXXXXX'
+            }
+            ref.set(data)
+        return data
+    except Exception as e:
+        logging.error(f"Error in get_settings: {e}")
+        return {
             'bkash': '017XXXXXXXX', 'nagad': '019XXXXXXXX', 
             'rocket': '015XXXXXXXX', 'binance': 'TRC20_WALLET_HERE',
             'bkash_logo': '', 'nagad_logo': '', 'rocket_logo': '', 'binance_logo': '',
@@ -82,8 +98,6 @@ def get_settings():
             'admin_tg': 'https://t.me/your_admin_username',
             'admin_wa': 'https://wa.me/88017XXXXXXXX'
         }
-        ref.set(data)
-    return data
 
 # --- কিবোর্ডস ---
 def main_menu():
