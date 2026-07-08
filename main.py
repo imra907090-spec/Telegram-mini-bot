@@ -29,9 +29,10 @@ API_TOKEN = '8931384031:AAElSwSOL_CQdShaUgvwEBenkdmJPkiXZUc'
 ADMIN_ID = 8273597769  
 MINI_APP_URL = "https://telegramminib.netlify.app/" 
 
-# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া পাবলিক রুলসের সঠিক মেথড)
+# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া পাবলিক রুলসের জন্য পারফেক্ট মেথড)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(
+        credential=firebase_admin.credentials.Anonymous(), # ক্রেডেনশিয়াল এরর দূর করার জন্য অ্যানোনিমাস মেথড
         options={
             'databaseURL': 'https://telegram-mini-bot-5cb21-default-rtdb.asia-southeast1.firebasedatabase.app/'
         }
@@ -182,7 +183,7 @@ async def web_app_logic(message: types.Message, state: FSMContext = None):
             f"📱 Gateway: <b>{data['method'].upper()}</b>\n"
             f"🆔 TxID: <code>{data['txid']}</code>\n"
             f"👤 Sender: <code>{data['sender']}</code>\n\n"
-            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে充 সেন্ড করুন:"
+            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে সেন্ড করুন:"
         )
         if state and not V3_MODE: await AdminStates.waiting_for_ss.set()
         elif state and V3_MODE: await state.set_state(AdminStates.waiting_for_ss)
@@ -228,7 +229,6 @@ else:
 if __name__ == '__main__':
     if V3_MODE:
         async def main():
-            # v3 ডেসপ্যাচারে সরাসরি বট অবজেক্ট পাস করা আবশ্যক
             await dp.start_polling(bot)
         asyncio.run(main())
     else:
