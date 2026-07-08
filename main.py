@@ -13,7 +13,6 @@ try:
     storage = MemoryStorage()
     V3_MODE = True
 except ModuleNotFoundError:
-    # v2 ব্যাকআপ সেফটি লেয়ার
     from aiogram import Bot, Dispatcher, types
     from aiogram.contrib.fsm_storage.memory import MemoryStorage
     from aiogram.dispatcher import FSMContext
@@ -30,13 +29,16 @@ API_TOKEN = '8647369071:AAEg2UdyvQGZGcxykDGkbz5oqsoabOVYOIk'
 ADMIN_ID = 8273597769  
 MINI_APP_URL = "https://telegramminib.netlify.app/" 
 
-# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া সরাসরি কানেকশন)
+# ফায়ারবেস ইনিশিয়াল সেটিংস (সিক্রেট ফাইল ছাড়া পাবলিক রুলস কানেকশন ফিক্স)
 if not firebase_admin._apps:
-    firebase_admin.initialize_app(options={
-        'databaseURL': 'https://telegram-mini-bot-5cb21-default-rtdb.asia-southeast1.firebasedatabase.app/'
-    })
+    firebase_admin.initialize_app(
+        credential=firebase_admin.credentials.AnonymousCredentials(), # গুগলের ডিফল্ট ক্রেডেনশিয়াল এরর ফিক্স করার ম্যাজিক লাইন
+        options={
+            'databaseURL': 'https://telegram-mini-bot-5cb21-default-rtdb.asia-southeast1.firebasedatabase.app/'
+        }
+    )
 
-# নতুন aiogram v3 এর নিয়ম অনুযায়ী Bot ইনিশিয়ালাইজেশন (যা ক্র্যাশ বন্ধ করবে)
+# Bot এবং Dispatcher ইনিশিয়ালাইজেশন
 if V3_MODE:
     bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     dp = Dispatcher(storage=storage)
