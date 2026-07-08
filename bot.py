@@ -21,7 +21,16 @@ if not firebase_admin._apps:
     })
 
 bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
-dp = Dispatcher(bot, storage=MemoryStorage())
+
+# aiogram এর ভার্সন ৩ এবং ২ উভয়ের জন্যই ক্র্যাশ-প্রুফ মেমোরি স্টোরেজ ট্রিক
+try:
+    from aiogram.contrib.fsm_storage.memory import MemoryStorage
+    storage = MemoryStorage()
+except ModuleNotFoundError:
+    from aiogram.fsm.storage.memory import MemoryStorage
+    storage = MemoryStorage()
+
+dp = Dispatcher(bot, storage=storage)
 logging.basicConfig(level=logging.INFO)
 
 # --- FSM States ---
@@ -232,7 +241,7 @@ async def admin_callbacks(call: types.CallbackQuery, state: FSMContext):
     elif call.data.startswith("logo_"):
         gateway = call.data.split("_")[1]
         await state.update_data(target_logo_gateway=gateway)
-        await call.message.answer(f"🖼️ নতুন {gateway.upper()} লোগোর ছবিটি ইমেজ আকারেসেন্ড করুন:")
+        await call.message.answer(f"🖼️ নতুন {gateway.upper()} লোগোর ছবিটি ইমেজ আকারে সেন্ড করুন:")
         await AdminStates.waiting_for_gateway_logo.set()
 
     elif call.data == "adm_support_links":
