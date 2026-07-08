@@ -101,20 +101,32 @@ def get_settings():
 
 # --- কিবোর্ডস ---
 def main_menu():
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL)))
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL))]
+    ]) if V3_MODE else types.InlineKeyboardMarkup()
+    if not V3_MODE:
+        kb.add(types.InlineKeyboardButton("🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL)))
     return kb
 
 def admin_menu():
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers"),
-        types.InlineKeyboardButton("🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus"),
-        types.InlineKeyboardButton("🛍️ নতুন সার্ভিস (কোড ফাইল) আপলোড", callback_data="adm_add_service"),
-        types.InlineKeyboardButton("📞 সাপোর্ট লিংক পরিবর্তন (TG/WA)", callback_data="adm_support_links"),
-        types.InlineKeyboardButton("📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")
-    )
-    return kb
+    if V3_MODE:
+        return types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers")],
+            [types.InlineKeyboardButton(text="🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus")],
+            [types.InlineKeyboardButton(text="🛍️ নতুন সার্ভিস (কোড ফাইল) আপলোড", callback_data="adm_add_service")],
+            [types.InlineKeyboardButton(text="📞 সাপোর্ট লিংক পরিবর্তন (TG/WA)", callback_data="adm_support_links")],
+            [types.InlineKeyboardButton(text="📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")]
+        ])
+    else:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers"),
+            types.InlineKeyboardButton("🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus"),
+            types.InlineKeyboardButton("🛍️ নতুন সার্ভিস (কোড ফাইল) আপলোড", callback_data="adm_add_service"),
+            types.InlineKeyboardButton("📞 সাপোর্ট লিংক পরিবর্তন (TG/WA)", callback_data="adm_support_links"),
+            types.InlineKeyboardButton("📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")
+        )
+        return kb
 
 # --- কোর লজিক হ্যান্ডলারস ---
 async def start_logic(message: types.Message):
@@ -170,7 +182,7 @@ async def web_app_logic(message: types.Message, state: FSMContext = None):
             f"📱 Gateway: <b>{data['method'].upper()}</b>\n"
             f"🆔 TxID: <code>{data['txid']}</code>\n"
             f"👤 Sender: <code>{data['sender']}</code>\n\n"
-            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে সেন্ড করুন:"
+            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে充 সেন্ড করুন:"
         )
         if state and not V3_MODE: await AdminStates.waiting_for_ss.set()
         elif state and V3_MODE: await state.set_state(AdminStates.waiting_for_ss)
@@ -198,10 +210,11 @@ async def web_app_logic(message: types.Message, state: FSMContext = None):
 # --- ইভেন্ট রাউটিং ও পলিস ইন্টিগ্রেশন ---
 if V3_MODE:
     from aiogram import Router, F
+    from aiogram.filters import Command
     router = Router()
-    @router.message(F.text == '/start')
+    @router.message(Command('start'))
     async def start_v3(message: types.Message): await start_logic(message)
-    @router.message(F.text == '/admin')
+    @router.message(Command('admin'))
     async def admin_v3(message: types.Message): await admin_logic(message)
     @router.message(F.content_type == types.ContentType.WEB_APP_DATA)
     async def web_v3(message: types.Message, state: FSMContext): await web_app_logic(message, state)
@@ -215,6 +228,7 @@ else:
 if __name__ == '__main__':
     if V3_MODE:
         async def main():
+            # v3 ডেসপ্যাচারে সরাসরি বট অবজেক্ট পাস করা আবশ্যক
             await dp.start_polling(bot)
         asyncio.run(main())
     else:
