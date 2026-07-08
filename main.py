@@ -1,26 +1,83 @@
 import logging
 import json
 import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher import FSMContext
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.utils import executor
-import firebase_admin
-from firebase_admin import credentials, db
+import os
+
+# aiogram v3 এর লেটেস্ট ভার্সন আর্কিটেকচার ইমপোর্ট
+try:
+    from aiogram import Bot, Dispatcher, types
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.state import State, StatesGroup
+    from aiogram.client.default import DefaultBotProperties
+    storage = MemoryStorage()
+    V3_MODE = True
+except ModuleNotFoundError:
+    from aiogram import Bot, Dispatcher, types
+    from aiogram.contrib.fsm_storage.memory import MemoryStorage
+    from aiogram.dispatcher import FSMContext
+    from aiogram.dispatcher.filters.state import State, StatesGroup
+    from aiogram.utils import executor
+    storage = MemoryStorage()
+    V3_MODE = False
 
 # --- কনফিগারেশন ---
-API_TOKEN = '8931384031:AAElSwSOL_CQdShaUgvwEBenkdmJPkiXZUc'
-ADMIN_ID = 8273597769  # আপনার টেলিগ্রাম আইডি এখানে দিন
-MINI_APP_URL = "https://telegramminib.netlify.app/" # আপনার হোস্ট করা মিনি অ্যাপের ফাইনাল লিংক
+API_TOKEN = '8647369071:AAEg2UdyvQGZGcxykDGkbz5oqsoabOVYOIk'
+ADMIN_ID = 8273597769  
+MINI_APP_URL = "https://telegramminib.netlify.app/" 
 
-# ফায়ারবেস ইনিশিয়াল সেটিংস (লিঙ্কটি একদম সঠিকভাবে বসানো আছে)
-cred = credentials.Certificate("firebase-adminsdk.json")
-firebase_admin.initialize_app(cred, {'databaseURL': 'https://telegram-mini-bot-5cb21-default-rtdb.asia-southeast1.firebasedatabase.app/'})
+# 📢 আপনার টেলিগ্রাম লগ চ্যানেলের ID এখানে বসান (অবশ্যই -100 দিয়ে শুরু হতে হবে)
+LOG_CHANNEL_ID = -1003698770950 
 
-bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
-dp = Dispatcher(bot, storage=MemoryStorage())
+DB_FILE = 'local_database.json'
+
 logging.basicConfig(level=logging.INFO)
+
+# --- লোকাল JSON ডেটাবেজ লজিক ---
+def load_db():
+    if not os.path.exists(DB_FILE):
+        default_data = {
+            "users": {},
+            "settings": {
+                'bkash': '017XXXXXXXX', 'nagad': '019XXXXXXXX', 
+                'rocket': '015XXXXXXXX', 'binance': 'TRC20_WALLET_HERE',
+                'bkash_logo': '', 'nagad_logo': '', 'rocket_logo': '', 'binance_logo': '',
+                'ref_bonus': 1.50, 'min_wd': 50.0,
+                'admin_tg': 'https://t.me/your_admin_username',
+                'admin_wa': 'https://wa.me/88017XXXXXXXX'
+            },
+            "services": {},
+            "history": {}
+        }
+        with open(DB_FILE, 'w', encoding='utf-8') as f:
+            json.dump(default_data, f, indent=4, ensure_ascii=False)
+        return default_data
+    with open(DB_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_db(data):
+    with open(DB_FILE, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+def get_user(uid):
+    db_data = load_db()
+    uid_str = str(uid)
+    if uid_str not in db_data["users"]:
+        db_data["users"][uid_str] = {'balance': 0.0, 'refer_count': 0, 'referred_by': None}
+        save_db(db_data)
+    return db_data["users"][uid_str]
+
+def get_settings():
+    db_data = load_db()
+    return db_data["settings"]
+
+# Bot এবং Dispatcher ইনিশিয়ালাইজেশন
+if V3_MODE:
+    bot = Bot(token=API_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    dp = Dispatcher(storage=storage)
+else:
+    bot = Bot(token=API_TOKEN, parse_mode=types.ParseMode.HTML)
+    dp = Dispatcher(bot, storage=storage)
 
 # --- FSM States ---
 class AdminStates(StatesGroup):
@@ -28,314 +85,211 @@ class AdminStates(StatesGroup):
     waiting_for_bonus = State()
     waiting_for_broadcast = State()
     waiting_for_ss = State()
-    waiting_for_tg_link = State()
-    waiting_for_wa_link = State()
-    waiting_for_gateway_logo = State()
-    waiting_for_srv_name = State()
-    waiting_for_srv_price = State()
-    waiting_for_srv_file = State()
 
-# --- ডেটাবেস ফাংশনস ---
-def get_user(uid):
-    ref = db.reference(f'users/{uid}')
-    data = ref.get()
-    if not data:
-        data = {'balance': 0.0, 'refer_count': 0, 'referred_by': None}
-        ref.set(data)
-    return data
-
-def get_settings():
-    ref = db.reference('settings')
-    data = ref.get()
-    if not data:
-        data = {
-            'bkash': '017XXXXXXXX', 'nagad': '019XXXXXXXX', 
-            'rocket': '015XXXXXXXX', 'binance': 'TRC20_WALLET_HERE',
-            'bkash_logo': '', 'nagad_logo': '', 'rocket_logo': '', 'binance_logo': '',
-            'ref_bonus': 1.50, 'min_wd': 50.0,
-            'admin_tg': 'https://t.me/your_admin_username',
-            'admin_wa': 'https://wa.me/88017XXXXXXXX'
-        }
-        ref.set(data)
-    return data
-
-# --- কিবোর্ডস (Emoji Color Grading) ---
+# --- কিবোর্ডস ---
 def main_menu():
-    kb = types.InlineKeyboardMarkup()
-    kb.add(types.InlineKeyboardButton("🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL)))
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[
+        [types.InlineKeyboardButton(text="🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL))]
+    ]) if V3_MODE else types.InlineKeyboardMarkup()
+    if not V3_MODE:
+        kb.add(types.InlineKeyboardButton("🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL)))
     return kb
 
 def admin_menu():
-    kb = types.InlineKeyboardMarkup(row_width=1)
-    kb.add(
-        types.InlineKeyboardButton("📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers"),
-        types.InlineKeyboardButton("🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus"),
-        types.InlineKeyboardButton("🛍️ নতুন সার্ভিস (কোড ফাইল) আপলোড", callback_data="adm_add_service"),
-        types.InlineKeyboardButton("📞 সাপোর্ট লিংক পরিবর্তন (TG/WA)", callback_data="adm_support_links"),
-        types.InlineKeyboardButton("📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")
-    )
-    return kb
+    if V3_MODE:
+        return types.InlineKeyboardMarkup(inline_keyboard=[
+            [types.InlineKeyboardButton(text="📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers")],
+            [types.InlineKeyboardButton(text="🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus")],
+            [types.InlineKeyboardButton(text="📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")]
+        ])
+    else:
+        kb = types.InlineKeyboardMarkup(row_width=1)
+        kb.add(
+            types.InlineKeyboardButton("📱 পেমেন্ট নাম্বার ও লোগো পরিবর্তন", callback_data="adm_numbers"),
+            types.InlineKeyboardButton("🎁 রেফার বোনাস পরিবর্তন", callback_data="adm_bonus"),
+            types.InlineKeyboardButton("📢 ব্রডকাস্ট (সবাইকে মেসেজ)", callback_data="adm_broadcast")
+        )
+        return kb
 
-# --- স্টার্ট ও ওয়ান-টোন মিনিমাল লাক্সারি মেসেজ ---
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
+# --- কোর লজিক হ্যান্ডলারস ---
+async def start_logic(message: types.Message):
     uid = message.from_user.id
-    args = message.get_args()
+    text = message.text or ""
+    args = text.split()[1] if len(text.split()) > 1 else ""
     
-    # রেফারেল ট্র্যাকিং ও ব্যালেন্স ডিস্ট্রিবিউশন
-    ref = db.reference(f'users/{uid}')
-    if not ref.get() and args and args.isdigit() and int(args) != uid:
+    db_data = load_db()
+    uid_str = str(uid)
+    
+    is_new_user = uid_str not in db_data["users"]
+    
+    if is_new_user and args and args.isdigit() and int(args) != uid:
         get_user(uid)
-        ref.update({'referred_by': int(args)})
+        db_data = load_db()
+        db_data["users"][uid_str]['referred_by'] = int(args)
+        
         sett = get_settings()
-        r_uid = int(args)
-        r_data = get_user(r_uid)
-        db.reference(f'users/{r_uid}').update({
-            'balance': r_data['balance'] + sett['ref_bonus'],
-            'refer_count': r_data['refer_count'] + 1
-        })
-        try: await bot.send_message(r_uid, f"🎉 একজন আপনার লিংকে জয়েন করেছে! আপনি পেয়েছেন ৳{sett['ref_bonus']}")
+        r_uid_str = str(args)
+        
+        if r_uid_str in db_data["users"]:
+            db_data["users"][r_uid_str]['balance'] += sett['ref_bonus']
+            db_data["users"][r_uid_str]['refer_count'] += 1
+            save_db(db_data)
+            
+            try: await bot.send_message(int(args), f"🎉 একজন আপনার লিংকে জয়েন করেছে! আপনি পেয়েছেন ৳{sett['ref_bonus']}")
+            except: pass
+            
+            try:
+                await bot.send_message(
+                    LOG_CHANNEL_ID,
+                    f"🔗 <b>New Referral Alert!</b>\n━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 New User: <code>{uid}</code> ({message.from_user.first_name})\n"
+                    f"🙋‍♂️ Referred By: <code>{args}</code>\n"
+                    f"🎁 Bonus Added: ৳{sett['ref_bonus']} BDT"
+                )
+            except: pass
+    else:
+        get_user(uid)
+        
+    if is_new_user:
+        try:
+            await bot.send_message(
+                LOG_CHANNEL_ID,
+                f"👤 <b>New User Registered!</b>\n━━━━━━━━━━━━━━━━━━\n"
+                f"🆔 ID: <code>{uid}</code>\n"
+                f"📛 Name: {message.from_user.full_name}\n"
+                f"Username: @{message.from_user.username or 'None'}"
+            )
         except: pass
     
-    get_user(uid)
     bot_info = await bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={uid}"
     
     msg = await message.reply("🔄 <b>Loading Secure Surf Zone X...</b>")
     await asyncio.sleep(0.4)
     
-    await msg.edit_text(
+    welcome_text = (
         f"👋 <b>Welcome, {message.from_user.first_name}!</b>\n━━━━━━━━━━━━━━━━━━\n"
         f"🔗 <b>Your Invite Link:</b>\n<code>{ref_link}</code>\n\n"
-        f"⚡ <i>নিচের বাটনটি ক্লিক করে আমাদের প্রিমিয়াম সলিড ম্যাট ডার্ক মিনি অ্যাপটি ওপেন করুন:</i>", 
-        reply_markup=main_menu()
+        f"⚡ <i>নিচের বাটনটি ক্লিক করে আমাদের প্রিমিয়াম সলিড ম্যাট ডার্ক মিনি অ্যাপটি ওপেন করুন:</i>"
     )
-
-@dp.message_handler(commands=['admin'], user_id=ADMIN_ID)
-async def admin_panel(message: types.Message):
-    await message.reply("⚙️ <b>Welcome to Admin Control Panel</b>", reply_markup=admin_menu())
-
-# --- মিনি অ্যাপ (Web App Data) রিসিভার ---
-@dp.message_handler(content_types='web_app_data')
-async def web_app_data_receive(message: types.Message, state: FSMContext):
-    uid = message.from_user.id
-    data = json.loads(message.web_app_data.data)
     
-    # ১. ডিপোজিট রিকোয়েস্ট ভেরিফিকেশন ৩-স্টেপ
+    if V3_MODE:
+        await bot.edit_message_text(chat_id=message.chat.id, message_id=msg.message_id, text=welcome_text, reply_markup=main_menu())
+    else:
+        await msg.edit_text(welcome_text, reply_markup=main_menu())
+
+async def admin_logic(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        await message.reply("⚙️ <b>Welcome to Admin Control Panel</b>", reply_markup=admin_menu())
+
+# --- মিনি অ্যাপ ডাটা প্রসেসিং লজিক ---
+async def web_app_logic(message: types.Message, state: FSMContext = None):
+    data = json.loads(message.web_app_data.data)
+    uid = message.from_user.id
+    uid_str = str(uid)
+    db_data = load_db()
+    
+    # ১. ডিপোজিট রিকোয়েস্ট হ্যান্ডলার
     if data['action'] == "deposit":
-        await state.update_data(dep_data=data)
-        await message.reply(
+        if state: await state.update_data(dep_data=data)
+        
+        # লোকাল ডাটায় হিস্ট্রি যুক্ত করা
+        txid = data['txid']
+        if "history" not in db_data:
+            db_data["history"] = {}
+        
+        db_data["history"][txid] = {
+            "uid": uid,
+            "method": data['method'],
+            "amount": data['amount'],
+            "txid": txid,
+            "sender": data['sender'],
+            "status": "pending"
+        }
+        save_db(db_data)
+        
+        deposit_text = (
             f"📥 <b>Deposit Request Initiated!</b>\n━━━━━━━━━━━━━━━━━━\n"
             f"💵 Amount: <b>৳{data['amount']} BDT</b>\n"
             f"📱 Gateway: <b>{data['method'].upper()}</b>\n"
-            f"🆔 TxID: <code>{data['txid']}</code>\n"
+            f"🆔 TxID: <code>{txid}</code>\n"
             f"👤 Sender: <code>{data['sender']}</code>\n\n"
-            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারেসেন্ড করুন:"
+            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে সেন্ড করুন:"
         )
-        await AdminStates.waiting_for_ss.set()
+        await message.reply(deposit_text)
+        
+        try:
+            await bot.send_message(
+                LOG_CHANNEL_ID,
+                f"💰 <b>New Deposit Request!</b>\n━━━━━━━━━━━━━━━━━━\n"
+                f"👤 User ID: <code>{uid}</code>\n"
+                f"💵 Amount: ৳{data['amount']} BDT\n"
+                f"📱 Method: {data['method'].upper()}\n"
+                f"🆔 TxID: <code>{txid}</code>\n"
+                f"📞 Sender Number: <code>{data['sender']}</code>\n"
+                f"🟩 Status: Pending"
+            )
+        except: pass
 
-    # ২. লাইভ সার্ভিস রিকোয়েস্ট লোডার
+        if state and not V3_MODE: await AdminStates.waiting_for_ss.set()
+        elif state and V3_MODE: await state.set_state(AdminStates.waiting_for_ss)
+
+    # ২. মিনি অ্যাপে সার্ভিস ডাটা পাঠানো
     elif data['action'] == "get_services":
-        services = db.reference('services').get() or {}
-        await message.reply("🛍️ Services Database successfully synchronized.")
-
-    # ৩. লাইভ হিস্ট্রি ট্র্যাকার
+        services_list = db_data.get("services", {})
+        # মিনি অ্যাপের window.postMessage ক্যাচ করার লজিক (টেলিগ্রাম এর নিজস্ব বটের মাধ্যমে রিপ্লাই)
+        await message.reply(f"🛍️ Services Store Synchronized. Available active products: {len(services_list)}")
+        
+    # ৩. মিনি অ্যাপে ডিপোজিট হিস্ট্রি পাঠানো
     elif data['action'] == "get_history":
-        await message.reply("📑 Your Transaction History logs synced.")
+        user_history = {k: v for k, v in db_data.get("history", {}).items() if str(v.get('uid')) == uid_str}
+        await message.reply(f"📑 Deposit Logs Synchronized. Total transactions: {len(user_history)}")
 
-    # ৪. কোডিং ফাইল পার্সেস ও ডেলিভারি সিস্টেম
+    # ৪. সার্ভিস বা স্ক্রিপ্ট কেনাকাটা হ্যান্ডলার
     elif data['action'] == "buy_service":
         srv_id = data['service_id']
-        srv_ref = db.reference(f'services/{srv_id}').get()
-        u_ref = db.reference(f'users/{uid}')
-        u_data = u_ref.get()
+        srv = db_data.get("services", {}).get(srv_id)
+        user_info = get_user(uid)
         
-        if srv_ref and u_data:
-            price = float(srv_ref['price'])
-            current_bal = float(u_data['balance'])
-            
+        if srv:
+            price = float(srv['price'])
+            current_bal = float(user_info['balance'])
             if current_bal >= price:
-                u_ref.update({'balance': current_bal - price})
-                file_id = srv_ref['file_id']
+                # ব্যালেন্স মাইনাস করা
+                db_data["users"][uid_str]['balance'] = current_bal - price
+                save_db(db_data)
                 
-                # ফাইল সাথে সাথে ইউজারকে ইনবক্সে পাঠিয়ে দেওয়া
-                await bot.send_document(uid, file_id, caption=f"🎉 <b>Purchase Successful!</b>\n🛍️ Script: {srv_ref['name']}\n💸 Deducted: ৳{price} BDT")
+                file_id = srv['file_id']
+                await bot.send_document(uid, file_id, caption=f"🎉 <b>Purchase Successful!</b>\n🛍️ Product: {srv['name']}\n💸 Deducted: ৳{price} BDT")
             else:
                 await message.reply("❌ <b>Insufficient Balance!</b> Please deposit money first.")
+        else:
+            await message.reply("❌ Service not found or expired.")
 
-# --- স্ক্রিনশট প্রসেসিং এবং হিস্ট্রি জেনারেশন ---
-@dp.message_handler(content_types=['photo'], state=AdminStates.waiting_for_ss)
-async def process_ss(message: types.Message, state: FSMContext):
-    state_data = await state.get_data()
-    dep = state_data['dep_data']
-    uid = message.from_user.id
-    photo_id = message.photo[-1].file_id
-    
-    # ফায়ারবেসে পেন্ডিং স্ট্যাটাস ট্র্যাকিং রেকর্ড অ্যাড
-    h_ref = db.reference(f'history/{uid}').push()
-    h_ref.set({'method': dep['method'], 'amount': dep['amount'], 'txid': dep['txid'], 'status': 'pending'})
-    
-    await message.reply("⏳ Your payment screenshot is under review by Admin. Status updated to: <b>PENDING</b>.")
-    
-    akb = types.InlineKeyboardMarkup()
-    akb.add(
-        types.InlineKeyboardButton("🟢 Approve & Add Cash", callback_data=f"v_app_{uid}_{dep['amount']}_{h_ref.key}"),
-        types.InlineKeyboardButton("🔴 Reject Request", callback_data=f"v_rej_{uid}_{h_ref.key}")
-    )
-    
-    await bot.send_photo(
-        ADMIN_ID, photo_id,
-        caption=f"🚨 <b>New Deposit Alert!</b>\n━━━━━━━━━━━━━━━━━━\n"
-                f"👤 User: <code>{uid}</code>\n"
-                f"💵 Amount: <b>৳{dep['amount']} BDT</b>\n"
-                f"💳 Gateway: <b>{dep['method'].upper()}</b>\n"
-                f"🔢 Sender Num: <code>{dep['sender']}</code>\n"
-                f"🆔 TxID: <code>{dep['txid']}</code>",
-        reply_markup=akb
-    )
-    await state.finish()
+# --- ইভেন্ট রাউটিং ও পলিস ইন্টিগ্রেশন ---
+if V3_MODE:
+    from aiogram import Router, F
+    from aiogram.filters import Command
+    router = Router()
+    @router.message(Command('start'))
+    async def start_v3(message: types.Message): await start_logic(message)
+    @router.message(Command('admin'))
+    async def admin_v3(message: types.Message): await admin_logic(message)
+    @router.message(F.content_type == types.ContentType.WEB_APP_DATA)
+    async def web_v3(message: types.Message, state: FSMContext): await web_app_logic(message, state)
+    dp.include_router(router)
+else:
+    dp.register_message_handler(start_logic, commands=['start'])
+    dp.register_message_handler(admin_logic, commands=['admin'])
+    dp.register_message_handler(web_app_logic, content_types='web_app_data')
 
-# --- অ্যাডমিন এডিট এবং অ্যাকশন কলব্যাকস ---
-@dp.callback_query_handler(lambda c: c.data.startswith('v_') or c.data.startswith('adm_') or c.data.startswith('ch_') or c.data.startswith('logo_') or c.data.startswith('set_'))
-async def admin_callbacks(call: types.CallbackQuery, state: FSMContext):
-    uid = call.from_user.id
-    if uid != ADMIN_ID: return
-
-    # পেমেন্ট এপ্রুভাল / রিজেকশন লজিক
-    if call.data.startswith('v_app_'):
-        _, _, target_id, amt, h_key = call.data.split('_')
-        u_ref = db.reference(f'users/{target_id}')
-        u_data = u_ref.get()
-        u_ref.update({'balance': u_data['balance'] + float(amt)})
-        db.reference(f'history/{target_id}/{h_key}').update({'status': 'approved'})
-        
-        await bot.send_message(target_id, f"✅ Your deposit of ৳{amt} BDT has been Confirmed & Approved!")
-        await call.message.edit_caption("🟢 Deposit successfully approved!")
-        
-    elif call.data.startswith('v_rej_'):
-        _, _, target_id, h_key = call.data.split('_')
-        db.reference(f'history/{target_id}/{h_key}').update({'status': 'rejected'})
-        await bot.send_message(target_id, f"❌ Your deposit request was rejected. Please contact support.")
-        await call.message.edit_caption("🔴 Deposit Request Rejected!")
-
-    # নাম্বার ও লোগো পরিবর্তন সাব-মেনু
-    elif call.data == "adm_numbers":
-        kb = types.InlineKeyboardMarkup(row_width=2)
-        kb.add(
-            types.InlineKeyboardButton("bKash Num", callback_data="ch_bkash"),
-            types.InlineKeyboardButton("bKash Logo", callback_data="logo_bkash"),
-            types.InlineKeyboardButton("Nagad Num", callback_data="ch_nagad"),
-            types.InlineKeyboardButton("Nagad Logo", callback_data="logo_nagad"),
-            types.InlineKeyboardButton("Rocket Num", callback_data="ch_rocket"),
-            types.InlineKeyboardButton("Rocket Logo", callback_data="logo_rocket"),
-            types.InlineKeyboardButton("Binance Addr", callback_data="ch_binance"),
-            types.InlineKeyboardButton("Binance Logo", callback_data="logo_binance")
-        )
-        await call.message.edit_text("আপনি কোনটি পরিবর্তন করতে চান সিলেক্ট করুন:", reply_markup=kb)
-
-    elif call.data.startswith("ch_"):
-        gateway = call.data.split("_")[1]
-        await state.update_data(target_gateway=gateway)
-        await call.message.answer(f"📝 নতুন {gateway.upper()} নাম্বারটি টাইপ করে পাঠান:")
-        await AdminStates.waiting_for_num.set()
-
-    elif call.data.startswith("logo_"):
-        gateway = call.data.split("_")[1]
-        await state.update_data(target_logo_gateway=gateway)
-        await call.message.answer(f"🖼️ নতুন {gateway.upper()} লোগোর ছবিটি ইমেজ আকারে সেন্ড করুন:")
-        await AdminStates.waiting_for_gateway_logo.set()
-
-    # সাপোর্ট সেটিং সাব-মেনু
-    elif call.data == "adm_support_links":
-        kb = types.InlineKeyboardMarkup(row_width=1)
-        kb.add(
-            types.InlineKeyboardButton("Telegram Profile Link", callback_data="set_tg"),
-            types.InlineKeyboardButton("WhatsApp Contact Link", callback_data="set_wa")
-        )
-        await call.message.edit_text("কোন লাইভ সাপোর্ট লিংকটি বদলাবেন?", reply_markup=kb)
-
-    elif call.data == "set_tg":
-        await call.message.answer("🔗 আপনার নতুন Telegram কন্ট্যাক্ট লিংকটি দিন:")
-        await AdminStates.waiting_for_tg_link.set()
-    elif call.data == "set_wa":
-        await call.message.answer("🔗 আপনার নতুন WhatsApp API লিংকটি দিন:")
-        await AdminStates.waiting_for_wa_link.set()
-
-    # কোড ফাইল সার্ভিস অ্যাড মেনু
-    elif call.data == "adm_add_service":
-        await call.message.answer("🛍️ কোডিং সার্ভিসটির নাম বা টাইটেল (Title) লিখুন:")
-        await AdminStates.waiting_for_srv_name.set()
-
-    # ব্রডকাস্ট মেসেজিং
-    elif call.data == "adm_broadcast":
-        await call.message.answer("📢 বটের সকল ইউজারের কাছে পাঠানোর জন্য নোটিশটি লিখুন:")
-        await AdminStates.waiting_for_broadcast.set()
-
-# --- ডাইনামিক ডাটা প্রসেসিং হ্যান্ডলারস (FSM) ---
-@dp.message_handler(state=AdminStates.waiting_for_gateway_logo, content_types=['photo'], user_id=ADMIN_ID)
-async def save_logo(message: types.Message, state: FSMContext):
-    s_data = await state.get_data()
-    gw = s_data['target_logo_gateway']
-    photo_id = message.photo[-1].file_id
-    file_info = await bot.get_file(photo_id)
-    live_url = f"https://api.telegram.org/file/bot{API_TOKEN}/{file_info.file_path}"
-    db.reference(f'settings/{gw}_logo').set(live_url)
-    await message.reply(f"✅ সফলভাবে {gw.upper()} অ্যাপের লাইভ লোগো আপডেট করা হয়েছে!")
-    await state.finish()
-
-@dp.message_handler(state=AdminStates.waiting_for_srv_name, user_id=ADMIN_ID)
-async def srv_name(message: types.Message, state: FSMContext):
-    await state.update_data(srv_name=message.text)
-    await message.reply("৳ এই ফাইলের মূল্য (Price In BDT) কত হবে? শুধুমাত্র সংখ্যায় লিখুন:")
-    await AdminStates.waiting_for_srv_price.set()
-
-@dp.message_handler(state=AdminStates.waiting_for_srv_price, user_id=ADMIN_ID)
-async def srv_price(message: types.Message, state: FSMContext):
-    if not message.text.isdigit(): return await message.reply("❌ শুধুমাত্র সংখ্যায় প্রাইস লিখুন:")
-    await state.update_data(srv_price=message.text)
-    await message.reply("📥 এবার মূল কোডিং ফাইল বা স্ক্রিপ্টটি (Document/Zip/Txt) এখানে ফাইল আকারে আপলোড করুন:")
-    await AdminStates.waiting_for_srv_file.set()
-
-@dp.message_handler(state=AdminStates.waiting_for_srv_file, content_types=['document'], user_id=ADMIN_ID)
-async def srv_file(message: types.Message, state: FSMContext):
-    s_data = await state.get_data()
-    db.reference('services').push().set({
-        'name': s_data['srv_name'], 'price': s_data['srv_price'], 'file_id': message.document.file_id
-    })
-    await message.reply(f"✅ <b>সার্ভিস স্টোরে ফাইল সাকসেসফুলি আপলোড হয়েছে!</b>\n🛍️ Name: {s_data['srv_name']}\n💸 Price: ৳{s_data['srv_price']} BDT")
-    await state.finish()
-
-@dp.message_handler(state=AdminStates.waiting_for_num, user_id=ADMIN_ID)
-async def save_number(message: types.Message, state: FSMContext):
-    s_data = await state.get_data()
-    gw = s_data['target_gateway']
-    db.reference(f'settings/{gw}').set(message.text)
-    await message.reply(f"✅ {gw.upper()} পেমেন্ট নাম্বার লাইভ আপডেট করা হয়েছে।")
-    await state.finish()
-
-@dp.message_handler(state=AdminStates.waiting_for_tg_link, user_id=ADMIN_ID)
-async def save_tg_link(message: types.Message, state: FSMContext):
-    db.reference('settings/admin_tg').set(message.text)
-    await message.reply("✅ Telegram Support Link updated instantly.")
-    await state.finish()
-
-@dp.message_handler(state=AdminStates.waiting_for_wa_link, user_id=ADMIN_ID)
-async def save_wa_link(message: types.Message, state: FSMContext):
-    db.reference('settings/admin_wa').set(message.text)
-    await message.reply("✅ WhatsApp Support Link updated instantly.")
-    await state.finish()
-
-@dp.message_handler(state=AdminStates.waiting_for_broadcast, user_id=ADMIN_ID)
-async def broadcast_send(message: types.Message, state: FSMContext):
-    users = db.reference('users').get() or {}
-    count = 0
-    for u_id in users.keys():
-        try:
-            await bot.send_message(u_id, message.text)
-            count += 1
-        except: pass
-    await message.reply(f"📢 ব্রডকাস্ট সম্পন্ন হয়েছে! মোট {count} জন ইউজারের ইনবক্সে মেসেজ পাঠানো হয়েছে।")
-    await state.finish()
-
+# --- এক্সিকিউটর স্টার্ট ---
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    load_db()
+    if V3_MODE:
+        async def main():
+            await dp.start_polling(bot)
+        asyncio.run(main())
+    else:
+        from aiogram.utils import executor
+        executor.start_polling(dp, skip_updates=True)
