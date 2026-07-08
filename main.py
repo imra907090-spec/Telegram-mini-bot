@@ -130,7 +130,7 @@ async def web_app_data_receive(message: types.Message, state: FSMContext):
             f"📱 Gateway: <b>{data['method'].upper()}</b>\n"
             f"🆔 TxID: <code>{data['txid']}</code>\n"
             f"👤 Sender: <code>{data['sender']}</code>\n\n"
-            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারে সেন্ড করুন:"
+            f"⚠️ পেমেন্ট ভেরিফাই করতে এখনই পেমেন্টের <b>স্ক্রিনশট (Screenshot)</b> টি ছবি আকারেসেন্ড করুন:"
         )
         await AdminStates.waiting_for_ss.set()
 
