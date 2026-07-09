@@ -25,17 +25,11 @@ logging.basicConfig(level=logging.INFO)
 
 # --- FSM States ---
 class AdminStates(StatesGroup):
-    waiting_for_num = State()
-    waiting_for_bonus = State()
-    waiting_for_broadcast = State()
-    waiting_for_ss = State()
     waiting_for_srv_name = State()
     waiting_for_srv_price = State()
     waiting_for_srv_file = State()
-    waiting_for_tg_link = State()
-    waiting_for_wa_link = State()
 
-# --- ডেটাবেজ ফাংশন (সেটিংস ঠিক রেখে) ---
+# --- ডাটাবেজ ফাংশন ---
 def load_db():
     if not os.path.exists(DB_FILE):
         default_data = {
@@ -62,20 +56,28 @@ async def start_handler(message: types.Message):
     bot_info = await bot.get_me()
     ref_link = f"https://t.me/{bot_info.username}?start={uid}"
     
-    kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🚀 Open Store", web_app=types.WebAppInfo(url=MINI_APP_URL))]])
-    await message.answer(f"👋 স্বাগতম! আপনার রেফার লিংক:\n<code>{ref_link}</code>", reply_markup=kb)
+    welcome_text = (
+        f"👋 <b>Welcome, {message.from_user.first_name}!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━\n\n"
+        f"✨ <b>Secure Surf Zone X</b>-এ আপনাকে স্বাগতম! আমাদের প্রিমিয়াম সার্ভিসের জগতে আপনাকে আমন্ত্রণ।\n\n"
+        f"🔗 <b>Your Personal Invite Link:</b>\n"
+        f"<code>{ref_link}</code>\n\n"
+        f"⚡ <i>নিচের বাটনটি ক্লিক করে আমাদের প্রিমিয়াম সলিড ম্যাট ডার্ক মিনি অ্যাপটি ওপেন করুন:</i>"
+    )
+    
+    kb = types.InlineKeyboardMarkup(inline_keyboard=[[types.InlineKeyboardButton(text="🚀 Open Store Mini-App", web_app=types.WebAppInfo(url=MINI_APP_URL))]])
+    await message.answer(welcome_text, reply_markup=kb)
 
 @router.message(Command('admin'))
 async def admin_panel(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         kb = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text="📱 পেমেন্ট নাম্বার পরিবর্তন", callback_data="adm_numbers")],
             [types.InlineKeyboardButton(text="🛍️ সার্ভিস অ্যাড করুন", callback_data="adm_add_srv")],
-            [types.InlineKeyboardButton(text="📞 সাপোর্ট লিংক পরিবর্তন", callback_data="adm_support")],
             [types.InlineKeyboardButton(text="📢 ব্রডকাস্ট", callback_data="adm_broadcast")]
         ])
-        await message.answer("⚙️ Admin Panel:", reply_markup=kb)
+        await message.answer("⚙️ <b>Admin Control Panel</b>", reply_markup=kb)
 
+# সার্ভিস অ্যাড করার লজিক
 @router.callback_query(F.data == "adm_add_srv")
 async def add_srv_step1(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer("সার্ভিসের নাম দিন:")
@@ -103,11 +105,19 @@ async def add_srv_step4(message: types.Message, state: FSMContext):
     await message.answer("✅ সার্ভিস সফলভাবে যোগ হয়েছে!")
     await state.clear()
 
-# (এখানে আপনার অন্যান্য লজিক ও WebApp ডাটা হ্যান্ডলারটি আগের মতো যোগ করে নিন)
+# WebApp ডাটা হ্যান্ডলার
+@router.message(F.content_type == types.ContentType.WEB_APP_DATA)
+async def web_app_handler(message: types.Message):
+    data = json.loads(message.web_app_data.data)
+    if data['action'] == "deposit":
+        await message.answer(f"📥 ডিপোজিট রিকোয়েস্ট রিসিভ হয়েছে। স্ক্রিনশট পাঠান।")
+    elif data['action'] == "get_services":
+        await message.answer("🛍️ সার্ভিস লিস্ট লোড হচ্ছে...")
 
 dp.include_router(router)
 
 async def main():
+    load_db()
     await dp.start_polling(bot)
 
 if __name__ == '__main__':
